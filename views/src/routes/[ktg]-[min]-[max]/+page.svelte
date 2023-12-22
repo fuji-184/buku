@@ -1,21 +1,11 @@
 <script>
+        export let data
+        
         import Card from "$lib/Card.svelte"
-        import { onMount } from "svelte"
-        
-        let buku = []
-        
-        onMount(async () => {
-                try {
-                      buku = await (await fetch("http://localhost:3000/buku")).json();  
-                } catch (error){
-                      console.log(error)  
-                }
-        })
-        
 </script>
 
 <div class="container">
-        {#each buku as b}
+        {#each data.buku as b}
         <Card nama={b.nama} gambar={b.gambar} tahun={b.tahun} rating={b.rating}
         harga={b.harga}/>
         {/each}

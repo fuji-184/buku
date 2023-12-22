@@ -6,12 +6,14 @@
         
         onMount(async () => {
                 try {
-                      buku = await (await fetch("http://localhost:3000/buku")).json();  
+                      buku = await (await
+                      fetch("http://localhost:3000/topbuku")).json();
+                      console.log(buku)
                 } catch (error){
                       console.log(error)  
                 }
         })
-        
+
 </script>
 
 <div class="container">

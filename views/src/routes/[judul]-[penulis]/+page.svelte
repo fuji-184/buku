@@ -1,24 +1,20 @@
 <script>
         import Card from "$lib/Card.svelte"
-        import { onMount } from "svelte"
         
-        let buku = []
-        
-        onMount(async () => {
-                try {
-                      buku = await (await fetch("http://localhost:3000/buku")).json();  
-                } catch (error){
-                      console.log(error)  
-                }
-        })
-        
+        export let data
+
 </script>
 
 <div class="container">
-        {#each buku as b}
-        <Card nama={b.nama} gambar={b.gambar} tahun={b.tahun} rating={b.rating}
-        harga={b.harga}/>
+        {#if data.status === 200}
+        {#each data.buku as b}
+        <Card nama={b.nama} gambar={b.gambar} harga={b.harga} rating={b.rating}/>
         {/each}
+        {/if}
+        
+        {#if data.status === 404}
+        <div>Maaf Buku Tidak Ditemukan</div>
+        {/if}
 </div>
 
 <style>

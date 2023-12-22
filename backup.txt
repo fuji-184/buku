@@ -1,0 +1,327 @@
+package main
+
+import (
+	"net/http"
+	"io/fs"
+	"embed"
+	"log"
+	"database/sql"
+	"encoding/json"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/cors"
+	
+	_ "github.com/go-sql-driver/mysql"
+)
+
+//go:embed all:views/build
+
+var PembacaUI embed.FS
+
+type Buku struct {
+        Nama string `json:"nama"`
+        Gambar string `json:"gambar"`
+        Rating float64 `json:"rating"`
+        Tahun string `json:"tahun"`
+        Harga float64 `json:"harga"`
+}
+
+type Kategori struct {
+        Id string `json:"id"`
+        Nama string `json:"nama"`
+}
+
+var db *sql.DB
+
+var ServeUI http.Handler
+
+func InitDB(){
+	db, _ = sql.Open("mysql", "root:1234@/uas2")
+
+        db.SetConnMaxLifetime(time.Minute * 3)
+        db.SetMaxOpenConns(10)
+        db.SetMaxIdleConns(10)
+}
+
+func InitUI(){
+        UI, err := fs.Sub(PembacaUI, "views/build")
+        if err != nil {
+                log.Fatal(err)
+        }
+        
+        ServeUI = http.FileServer(http.FS(UI))
+}
+
+func main() {
+        InitDB()
+        InitUI()
+                
+	r := chi.NewRouter()
+	
+	r.Use(cors.Handler(cors.Options{
+    // AllowedOrigins:   []string{"https://foo.com"}, // Use this to allow specific origin hosts
+    AllowedOrigins:   []string{"https://*", "http://*"},
+    // AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
+    AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+    AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+    ExposedHeaders:   []string{"Link"},
+    AllowCredentials: false,
+    MaxAge:           300, // Maximum value not ignored by any of major browsers
+  }))
+	
+ 	r.Handle("/", ServeUI)
+ 	r.Handle("/_app/*", ServeUI)
+ 	
+ 	r.Get("/buku", buku)
+ 	r.Get("/buku/{keyword}", cari)
+ 	r.Get("/bukuterbaru", newbuku)
+ 	r.Get("/topbuku", topbuku)
+ 	r.Get("/kategori", kategori)
+ 	r.Get("/search/{min}-{max}", filter)
+ 	
+  	 r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
+	        r.URL.Path = "/"
+	        ServeUI.ServeHTTP(w, r)
+        })
+        
+        
+ 
+	http.ListenAndServe(":3000", r)
+}
+
+func buku(w http.ResponseWriter, r *http.Request){
+ 	        
+ 	stmt, err := db.Prepare("SELECT b.Nama, b.Gambar, b.Tahun, b.Harga, AVG(r.Rating) AS rating FROM Buku b JOIN Rating r ON b.Id = r.Id_Buku GROUP BY b.Id")
+ 	        if err != nil {
+ 	                log.Fatal(err)
+ 	        }
+ 	        defer stmt.Close()
+ 	        
+ 	        hasil, err := stmt.Query()
+ 	        if err != nil {
+ 	                log.Fatal(err)
+ 	        }
+ 	        defer hasil.Close()
+ 	        
+ 	        
+ 	        var data []Buku
+ 	        for hasil.Next(){
+ 	                var i Buku
+ 	                err := hasil.Scan(&i.Nama, &i.Gambar, &i.Tahun, &i.Harga, &i.Rating)
+ 	                if err != nil {
+ 	                        log.Fatal(err)
+ 	                }
+ 	                
+ 	                data = append(data, i)
+ 	        }
+ 	        
+ 	        if len(data) == 0{
+ 	              http.Error(w, "Data tidak ditemukan", http.StatusNotFound)
+		return
+ 	              
+ 	        }
+ 	        
+
+  	        
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+        
+
+ 	        
+ 	}
+ 	
+func cari(w http.ResponseWriter, r *http.Request) {
+	keyword := chi.URLParam(r, "keyword")
+
+	stmt, err := db.Prepare("SELECT b.Nama, b.Gambar, b.Harga, b.Tahun, AVG(r.Rating) AS rating FROM Buku b JOIN Rating r ON b.Id = r.Id_Buku WHERE b.Nama LIKE ? GROUP BY b.Id")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer stmt.Close()
+
+	hasil, err := stmt.Query("%" + keyword + "%")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer hasil.Close()
+
+	var data []Buku
+	for hasil.Next() {
+		var i Buku
+		err := hasil.Scan(&i.Nama, &i.Gambar, &i.Harga, &i.Tahun, &i.Rating)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		data = append(data, i)
+	}
+
+	if len(data) == 0 {
+		http.Error(w, "Data tidak ditemukan", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
+
+
+func newbuku(w http.ResponseWriter, r *http.Request){
+        
+        stmt, err := db.Prepare("SELECT b.Nama, b.Gambar, b.Tahun, b.Harga, AVG(r.Rating) AS rating FROM Buku b JOIN Rating r ON b.Id = r.Id_Buku GROUP BY b.Id order by tahun desc")
+ 	        if err != nil {
+ 	                log.Fatal(err)
+ 	        }
+ 	        defer stmt.Close()
+ 	        
+ 	        hasil, err := stmt.Query()
+ 	        if err != nil {
+ 	                log.Fatal(err)
+ 	        }
+ 	        defer hasil.Close()
+ 	        
+ 	        
+ 	        var data []Buku
+ 	        for hasil.Next(){
+ 	                var i Buku
+ 	                err := hasil.Scan(&i.Nama, &i.Gambar, &i.Tahun, &i.Harga, &i.Rating)
+ 	                if err != nil {
+ 	                        log.Fatal(err)
+ 	                }
+ 	                
+ 	                data = append(data, i)
+ 	        }
+ 	        
+ 	        if len(data) == 0{
+ 	              http.Error(w, "Data tidak ditemukan", http.StatusNotFound)
+		return
+ 	              
+ 	        }
+ 	        
+
+  	        
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+        
+}
+
+func topbuku(w http.ResponseWriter, r *http.Request){
+        
+        stmt, err := db.Prepare("SELECT b.Nama, b.Tahun, b.Gambar, b.Harga, AVG(r.Rating) AS rating FROM Buku b JOIN Rating r ON b.Id = r.Id_Buku GROUP BY b.Id ORDER BY rating DESC;")
+ 	        if err != nil {
+ 	                log.Fatal(err)
+ 	        }
+ 	        defer stmt.Close()
+ 	        
+ 	        hasil, err := stmt.Query()
+ 	        if err != nil {
+ 	                log.Fatal(err)
+ 	        }
+ 	        defer hasil.Close()
+ 	        
+ 	        
+ 	        var data []Buku
+ 	        for hasil.Next(){
+ 	                var i Buku
+ 	                err := hasil.Scan(&i.Nama, &i.Tahun, &i.Gambar, &i.Harga, &i.Rating)
+ 	                if err != nil {
+ 	                        log.Fatal(err)
+ 	                }
+ 	                
+ 	                data = append(data, i)
+ 	        }
+ 	        
+ 	        if len(data) == 0{
+ 	              http.Error(w, "Data tidak ditemukan", http.StatusNotFound)
+		return
+ 	              
+ 	        }
+ 	        
+
+  	        
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+        
+}
+
+func kategori(w http.ResponseWriter, r *http.Request){
+        
+        stmt, err := db.Prepare("SELECT Id, Nama from Kategori;")
+ 	        if err != nil {
+ 	                log.Fatal(err)
+ 	        }
+ 	        defer stmt.Close()
+ 	        
+ 	        hasil, err := stmt.Query()
+ 	        if err != nil {
+ 	                log.Fatal(err)
+ 	        }
+ 	        defer hasil.Close()
+ 	        
+ 	        
+ 	        var data []Kategori
+ 	        for hasil.Next(){
+ 	                var i Kategori
+ 	                err := hasil.Scan(&i.Id, &i.Nama)
+ 	                if err != nil {
+ 	                        log.Fatal(err)
+ 	                }
+ 	                
+ 	                data = append(data, i)
+ 	        }
+ 	        
+ 	        if len(data) == 0{
+ 	              http.Error(w, "Data tidak ditemukan", http.StatusNotFound)
+		return
+ 	              
+ 	        }
+ 	        
+
+  	        
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+        
+}
+
+func filter(w http.ResponseWriter, r *http.Request) {
+//	ktg := r.URL.Query().Get("ktg")
+ 	min := r.URL.Query().Get("min")
+ 	max := r.URL.Query().Get("max")
+// 
+stmt, err := db.Prepare("SELECT b.Nama, b.Gambar, b.Tahun, b.Harga, AVG(r.Rating) AS rating FROM Buku b JOIN Rating r ON b.Id = r.Id_Buku where b.Harga > ? and b.Harga < ?;")
+if err != nil {
+    log.Fatal(err)
+}
+defer stmt.Close()
+
+hasil, err := stmt.Query(min, max)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer hasil.Close()
+
+	var data []Buku
+	for hasil.Next() {
+		var i Buku
+		err := hasil.Scan(&i.Nama, &i.Gambar, &i.Tahun, &i.Harga, &i.Rating)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		data = append(data, i)
+	}
+
+	if len(data) == 0 {
+		http.Error(w, "Data tidak ditemukan", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
